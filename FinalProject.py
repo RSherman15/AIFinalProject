@@ -7,6 +7,8 @@ import datetime
 import math
 from collections import Counter
 import numpy as np
+from sklearn import preprocessing
+from sklearn.neighbors import KNeighborsClassifier
 
 def processCustomer(rows, variableNames):
 	processedRow = []
@@ -47,10 +49,8 @@ def processCustomer(rows, variableNames):
 
 	return processedRow
 
-
-
-def main():
-	with open('train.csv', 'r') as f:
+def preprocess(filename):
+	with open(filename, 'r') as f:
 		reader = csv.reader(f, delimiter=',')
 		customerID = None
 		variableNames = reader.next()
@@ -65,8 +65,44 @@ def main():
 			rows.append(row)
 
 	customers = np.array(customers)
-	output = np.delete(customers, variableNames.index('A'), 1)
-	print output
+	return (customers, variableNames)
+
+def main():
+	trainingCustomers, variableNames = preprocess('train.csv')
+
+	trainOutput = trainingCustomers[:,variableNames.index('A')]
+	trainInput = np.delete(trainingCustomers, variableNames.index('A'), 1)
+
+	testCustomers, _ = preprocess('test_v2.csv')
+
+	testOutput = testCustomers[:,variableNames.index('A')]
+	testInput = np.delete(testCustomers, variableNames.index('A'), 1)
+
+	stateEncoder = preprocessing.LabelEncoder()
+	carValueEncoder = preprocessing.LabelEncoder()
+	trainStates = trainInput[:,variableNames.index('state')]
+	testStates = testInput[:,variableNames.index('state')]
+	stateStack = np.hstack((trainStates, testStates))
+	stateEncoder.fit(stateStack)
+
+	trainCarValues = trainInput[:,variableNames.index('car_value')]
+	testCarValues = testInput[:,variableNames.index('car_value')]
+	carValueStack = np.hstack((trainCarValues, testCarValues))
+	carValueEncoder.fit(carValueStack)
+
+	encodedTrainStates = stateEncoder.transform(trainStates)
+	encodedTrainCarValues = carValueEncoder.transform(trainCarValues)
+	encodedTestStates = stateEncoder.transform(testStates)
+	encodedTestCarValues = carValueEncoder.transform(testCarValues)
+
+	trainInput[:,variableNames.index('state')] = encodedTrainStates
+	trainInput[:,variableNames.index('car_value')] = encodedTrainCarValues
+	testInput[:,variableNames.index('state')] = encodedTestStates
+	testInput[:,variableNames.index('car_value')] = encodedTestCarValues
+
+	classifier = KNeighborsClassifier(n_neighbors = 30)
+	classifier.fit(trainInput, trainOutput)
+	print 'score: ', classifier.score(testInput, testOutput)
 
 if __name__ == "__main__":
 	main()
