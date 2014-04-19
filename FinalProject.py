@@ -7,6 +7,7 @@ import datetime
 import math
 from collections import Counter
 import numpy as np
+import scipy
 from sklearn import preprocessing
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
@@ -93,6 +94,20 @@ def main():
 	testCustomers[:,variableNames.index('car_value')] = encodedTestCarValues
 
 
+	# trainInput = np.delete(trainingCustomers, -1, 1)
+
+	# testOutput = testCustomers[:,-1]
+	# testInput = np.delete(testCustomers, -1, 1)
+
+	# classifier = KNeighborsClassifier(n_neighbors = 30)
+	# #classifier = SVC()
+	# classifier.fit(trainInput[:,1:], trainOutput)
+	# outputs.append(classifier.predict(testInput[:,1:]))
+	# print 'output column: lastViewed', 
+	# print 'score: ', classifier.score(testInput[:,1:], testOutput)
+
+	outputs = []
+	trainOutput = trainingCustomers[:,-1]
 	trainInput = np.delete(trainingCustomers, -1, 1)
 
 	testOutput = testCustomers[:,-1]
@@ -101,11 +116,14 @@ def main():
 	classifier = KNeighborsClassifier(n_neighbors = 30)
 	#classifier = SVC()
 	classifier.fit(trainInput[:,1:], trainOutput)
-	outputs.append(classifier.predict(testInput[:,1:]))
-	print 'output column: lastViewed', 
+	outputs.append(classifier.predict_proba(testInput[:,1:]))
+	print 'output column: lastViewed'
 	print 'score: ', classifier.score(testInput[:,1:], testOutput)
-
-	outputs = []
+	fixed_output = [(1 if x=='True' else 0) for x in testOutput]
+	print "fixed_output", fixed_output
+	print 'frequency stats:' + str(scipy.stats.itemfreq(fixed_output))
+	print 'outputs', outputs
+	# outputs = []
 	# for outputCol in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
 	# 	trainOutput = trainingCustomers[:,variableNames.index(outputCol)]
 	# 	trainInput = np.delete(trainingCustomers, variableNames.index(outputCol), 1)
