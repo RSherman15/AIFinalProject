@@ -13,6 +13,8 @@ from sklearn.svm import SVC
 
 def processCustomer(rows, variableNames):
 	processedRow = []
+	lastViewed = ""
+	actuallyPurchased = ""
 
 	for i in range(len(variableNames)):
 		if variableNames[i] == 'time':
@@ -21,35 +23,27 @@ def processCustomer(rows, variableNames):
 				x = time.strptime(row[i], "%H:%M")
 				seconds = datetime.timedelta(hours=x.tm_hour, minutes=x.tm_min, seconds=x.tm_sec).total_seconds()
 				times.append(seconds)
-			# averageTime = sum(times)/float(len(times))
-			# processedRow.append(averageTime)
-			processedRow.append(times[-1])
-		
-		# elif variableNames[i] == 'cost':
-		# 	costs = []
-		# 	for row in rows:
-		# 		costs.append(int(row[i]))
-		# 	averageCost = sum(costs)/float(len(costs))
-		# 	processedRow.append(averageCost)
-		
-		# elif variableNames[i] in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-		# 	options = []
-		# 	for row in rows:
-		# 		options.append(row[i])
-		# 	counter = Counter(options)
-		# 	mode, _ = counter.most_common(1)[0]
-		# 	processedRow.append(int(mode))
+			processedRow.append(times[-2])
+				
+		elif variableNames[i] in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
+			lastViewed += str(rows[-2][i])
+			actuallyPurchased += str(rows[-1][i])
+
+			processedRow.append(rows[-2][i])
 
 		elif variableNames[i] in ['car_value', 'state']:
-			processedRow.append(rows[-1][i])
+			processedRow.append(rows[-2][i])
 
 		else:
-			if rows[-1][i] == 'NA':
+			if rows[-2][i] == 'NA':
 				processedRow.append(-1)
 			else: 
-				processedRow.append(int(rows[-1][i]))
+				processedRow.append(int(rows[-2][i]))
+
+	processedRow.append(lastViewed == actuallyPurchased)
 
 	return processedRow
+
 
 def preprocess(filename):
 	with open(filename, 'r') as f:
@@ -99,30 +93,42 @@ def main():
 	testCustomers[:,variableNames.index('car_value')] = encodedTestCarValues
 
 
+	trainInput = np.delete(trainingCustomers, -1, 1)
+
+	testOutput = testCustomers[:,-1]
+	testInput = np.delete(testCustomers, -1, 1)
+
+	classifier = KNeighborsClassifier(n_neighbors = 30)
+	#classifier = SVC()
+	classifier.fit(trainInput[:,1:], trainOutput)
+	outputs.append(classifier.predict(testInput[:,1:]))
+	print 'output column: lastViewed', 
+	print 'score: ', classifier.score(testInput[:,1:], testOutput)
+
 	outputs = []
-	for outputCol in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-		trainOutput = trainingCustomers[:,variableNames.index(outputCol)]
-		trainInput = np.delete(trainingCustomers, variableNames.index(outputCol), 1)
+	# for outputCol in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
+	# 	trainOutput = trainingCustomers[:,variableNames.index(outputCol)]
+	# 	trainInput = np.delete(trainingCustomers, variableNames.index(outputCol), 1)
 
-		testOutput = testCustomers[:,variableNames.index(outputCol)]
-		testInput = np.delete(testCustomers, variableNames.index(outputCol), 1)
+	# 	testOutput = testCustomers[:,variableNames.index(outputCol)]
+	# 	testInput = np.delete(testCustomers, variableNames.index(outputCol), 1)
 
-		classifier = KNeighborsClassifier(n_neighbors = 30)
-		#classifier = SVC()
-		classifier.fit(trainInput[:,1:], trainOutput)
-		outputs.append(classifier.predict(testInput[:,1:]))
-		print 'output column: ', outputCol
-		print 'score: ', classifier.score(testInput[:,1:], testOutput)
+	# 	classifier = KNeighborsClassifier(n_neighbors = 30)
+	# 	#classifier = SVC()
+	# 	classifier.fit(trainInput[:,1:], trainOutput)
+	# 	outputs.append(classifier.predict(testInput[:,1:]))
+	# 	print 'output column: ', outputCol
+	# 	print 'score: ', classifier.score(testInput[:,1:], testOutput)
 
-	resultStrings = []
-	customerIDs = testCustomers[:, variableNames.index('customer_ID')]
-	for customerID, customerResult in zip(customerIDs, zip(*outputs)):
-		resultString = customerID + ',' + ''.join([x for x in customerResult])
-		resultStrings.append(resultString)
+	# resultStrings = []
+	# customerIDs = testCustomers[:, variableNames.index('customer_ID')]
+	# for customerID, customerResult in zip(customerIDs, zip(*outputs)):
+	# 	resultString = customerID + ',' + ''.join([x for x in customerResult])
+	# 	resultStrings.append(resultString)
 
-	with open('results.csv', 'w') as f:
-		f.write('customer_ID,plan\n')
-		f.write('\n'.join(resultStrings))
+	# with open('results.csv', 'w') as f:
+	# 	f.write('customer_ID,plan\n')
+	# 	f.write('\n'.join(resultStrings))
 
 if __name__ == "__main__":
 	main()
