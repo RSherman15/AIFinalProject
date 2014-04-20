@@ -16,6 +16,7 @@ def processCustomer(rows, variableNames):
 	processedRow = []
 	lastViewed = ""
 	actuallyPurchased = ""
+	lastViewedIndex = -1
 
 	for i in range(len(variableNames)):
 		if variableNames[i] == 'time':
@@ -24,51 +25,113 @@ def processCustomer(rows, variableNames):
 				x = time.strptime(row[i], "%H:%M")
 				seconds = datetime.timedelta(hours=x.tm_hour, minutes=x.tm_min, seconds=x.tm_sec).total_seconds()
 				times.append(seconds)
-			processedRow.append(times[-2])
+			processedRow.append(times[lastViewedIndex])
 				
 		elif variableNames[i] in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-			lastViewed += str(rows[-2][i])
-			actuallyPurchased += str(rows[-1][i])
+			processedRow.append(rows[lastViewedIndex][i])
 
-			processedRow.append(rows[-2][i])
 
 		elif variableNames[i] in ['car_value', 'state']:
-			processedRow.append(rows[-2][i])
+			processedRow.append(rows[lastViewedIndex][i])
 
 		else:
-			if rows[-2][i] == 'NA':
+			if rows[lastViewedIndex][i] == 'NA':
 				processedRow.append(-1)
 			else: 
-				processedRow.append(int(rows[-2][i]))
-
-	processedRow.append(lastViewed == actuallyPurchased)
+				processedRow.append(int(rows[lastViewedIndex][i]))
 
 	return processedRow
 
+def processPurchasePoint(lastViewedRow, actuallyPurchasedRow, variableNames):
+	for variable in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
+		if lastViewedRow[variableNames.index(variable)] != actuallyPurchasedRow[variableNames.index(variable)]:
+			return False
+	return True
 
-def preprocess(filename):
+
+def preprocess(filename, isTrain):
 	with open(filename, 'r') as f:
 		reader = csv.reader(f, delimiter=',')
 		customerID = None
 		variableNames = reader.next()
 		rows = []
 		customers = []
+		purchasedLastViewed = []
 		for row in reader:
 			if row[0] != customerID:
 				if len(rows) > 0:
-					customers.append(processCustomer(rows, variableNames))
+					if isTrain:
+						customers.append(processCustomer(rows[:-1], variableNames))
+						purchasedLastViewed.append(processPurchasePoint(rows[-2], rows[-1], variableNames))
+					else:
+						customers.append(processCustomer(rows, variableNames))
 				customerID = row[0]
 				rows = []
 			rows.append(row)
 		if len(rows) > 0:
-			customers.append(processCustomer(rows, variableNames))			
+			print rows
+			if isTrain:
+				customers.append(processCustomer(rows[:-1], variableNames))
+				purchasedLastViewed.append(processPurchasePoint(rows[-2], rows[-1]))
+			else:
+				customers.append(processCustomer(rows, variableNames))			
 
 	customers = np.array(customers)
-	return (customers, variableNames)
+	return (customers, variableNames, purchasedLastViewed)
+
+def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
+	predictedTestOutputs = []
+	predictedTrainOutputs = []
+
+	classifier = KNeighborsClassifier(n_neighbors = 30)
+	classifier.fit(trainInput[:,1:], trainOutput)
+	predictedTrainOutputs.extend(classifier.predict(trainInput[:,1:]))
+	predictedTestOutputs.extend(classifier.predict(testInput[:,1:]))
+
+	resultString = ""
+	testIndicesToDelete = []
+	for i in range(len(predictedTestOutputs)):
+		if predictedTestOutputs[i] == 'True':
+			resultString += str(testInput[i][0]) + ","
+			for coverageOption in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
+				resultString += str(testInput[i][variableNames.index(coverageOption)])
+			resultString += '\n'
+			testIndicesToDelete.append(i)
+
+	trainIndicesToDelete = []
+	for i in range(len(predictedTrainOutputs)):
+		if predictedTrainOutputs[i] == 'True':
+			trainIndicesToDelete.append(i)
+
+	return resultString, trainIndicesToDelete, testIndicesToDelete
+
+def secondClassifier(trainData, testInput, variableNames):
+	'''this one is significantly shittier than the last. Probably because we don't really know yet???'''
+	outputs = []
+	for outputCol in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
+		trainOutput = trainData[:,variableNames.index(outputCol)]
+		trainInput = np.delete(trainData, variableNames.index(outputCol), 1)
+
+		testOutput = testCustomers[:,variableNames.index(outputCol)]
+		testInput = np.delete(testCustomers, variableNames.index(outputCol), 1)
+
+		classifier = KNeighborsClassifier(n_neighbors = 30)
+		# classifier = SVC()
+		classifier.fit(trainInput[:,1:], trainOutput)
+		outputs.append(classifier.predict(testInput[:,1:]))
+		print 'output column: ', outputCol
+
+	resultStrings = []
+	customerIDs = testCustomers[:, variableNames.index('customer_ID')]
+	for customerID, customerResult in zip(customerIDs, zip(*outputs)):
+		resultString = customerID + ',' + ''.join([x for x in customerResult])
+		resultStrings.append(resultString)
+
+	return '\n'.join(resultStrings)
 
 def main():
-	trainingCustomers, variableNames = preprocess('train.csv')
-	testCustomers, _ = preprocess('test_v2.csv')
+	trainingCustomers, variableNames, purchasedLastViewed = preprocess('train.csv', True)
+	testCustomers, _, _ = preprocess('test_v2.csv', False)
 
 	stateEncoder = preprocessing.LabelEncoder()
 	carValueEncoder = preprocessing.LabelEncoder()
@@ -93,60 +156,22 @@ def main():
 	testCustomers[:,variableNames.index('state')] = encodedTestStates
 	testCustomers[:,variableNames.index('car_value')] = encodedTestCarValues
 
+	trainOutput = purchasedLastViewed
+	trainInput = trainingCustomers
+	testInput = testCustomers
 
-	# trainInput = np.delete(trainingCustomers, -1, 1)
+	resultString, trainIndicesToDelete, testIndicesToDelete = lastViewedClassifier(trainInput, trainOutput, testInput, variableNames)
 
-	# testOutput = testCustomers[:,-1]
-	# testInput = np.delete(testCustomers, -1, 1)
+	trainData = numpy.delete(trainInput, trainIndicesToDelete)
+	testInput = numpy.delete(testInput, testIndicesToDelete)
 
-	# classifier = KNeighborsClassifier(n_neighbors = 30)
-	# #classifier = SVC()
-	# classifier.fit(trainInput[:,1:], trainOutput)
-	# outputs.append(classifier.predict(testInput[:,1:]))
-	# print 'output column: lastViewed', 
-	# print 'score: ', classifier.score(testInput[:,1:], testOutput)
+	resultString += secondClassifier(trainData, testInput, variableNames)
 
-	outputs = []
-	trainOutput = trainingCustomers[:,-1]
-	trainInput = np.delete(trainingCustomers, -1, 1)
 
-	testOutput = testCustomers[:,-1]
-	testInput = np.delete(testCustomers, -1, 1)
 
-	classifier = KNeighborsClassifier(n_neighbors = 30)
-	#classifier = SVC()
-	classifier.fit(trainInput[:,1:], trainOutput)
-	outputs.append(classifier.predict_proba(testInput[:,1:]))
-	print 'output column: lastViewed'
-	print 'score: ', classifier.score(testInput[:,1:], testOutput)
-	fixed_output = [(1 if x=='True' else 0) for x in testOutput]
-	print "fixed_output", fixed_output
-	print 'frequency stats:' + str(scipy.stats.itemfreq(fixed_output))
-	print 'outputs', outputs
-	# outputs = []
-	# for outputCol in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-	# 	trainOutput = trainingCustomers[:,variableNames.index(outputCol)]
-	# 	trainInput = np.delete(trainingCustomers, variableNames.index(outputCol), 1)
-
-	# 	testOutput = testCustomers[:,variableNames.index(outputCol)]
-	# 	testInput = np.delete(testCustomers, variableNames.index(outputCol), 1)
-
-	# 	classifier = KNeighborsClassifier(n_neighbors = 30)
-	# 	#classifier = SVC()
-	# 	classifier.fit(trainInput[:,1:], trainOutput)
-	# 	outputs.append(classifier.predict(testInput[:,1:]))
-	# 	print 'output column: ', outputCol
-	# 	print 'score: ', classifier.score(testInput[:,1:], testOutput)
-
-	# resultStrings = []
-	# customerIDs = testCustomers[:, variableNames.index('customer_ID')]
-	# for customerID, customerResult in zip(customerIDs, zip(*outputs)):
-	# 	resultString = customerID + ',' + ''.join([x for x in customerResult])
-	# 	resultStrings.append(resultString)
-
-	# with open('results.csv', 'w') as f:
-	# 	f.write('customer_ID,plan\n')
-	# 	f.write('\n'.join(resultStrings))
+	with open('results.csv', 'w') as f:
+		f.write('customer_ID,plan\n')
+		f.write(resultString)
 
 if __name__ == "__main__":
 	main()
