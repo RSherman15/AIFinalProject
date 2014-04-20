@@ -43,10 +43,13 @@ def processCustomer(rows, variableNames):
 	return processedRow
 
 def processPurchasePoint(lastViewedRow, actuallyPurchasedRow, variableNames):
+	boughtLastViewed = True
+	purchasedOptions = []
 	for variable in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
 		if lastViewedRow[variableNames.index(variable)] != actuallyPurchasedRow[variableNames.index(variable)]:
-			return False
-	return True
+			boughtLastViewed = False
+		purchasedOptions.append(actuallyPurchasedRow[variableNames.index(variable)])
+	return boughtLastViewed, purchasedOptions
 
 
 def preprocess(filename, isTrain):
@@ -57,27 +60,33 @@ def preprocess(filename, isTrain):
 		rows = []
 		customers = []
 		purchasedLastViewed = []
+		purchasedOptions = []
 		for row in reader:
 			if row[0] != customerID:
 				if len(rows) > 0:
 					if isTrain:
 						customers.append(processCustomer(rows[:-1], variableNames))
-						purchasedLastViewed.append(processPurchasePoint(rows[-2], rows[-1], variableNames))
+						didPurchaseLastViewed, optionsPurchased = processPurchasePoint(rows[-2], rows[-1], variableNames)
+						purchasedLastViewed.append(didPurchaseLastViewed)
+						purchasedOptions.append(optionsPurchased)						
 					else:
 						customers.append(processCustomer(rows, variableNames))
 				customerID = row[0]
 				rows = []
 			rows.append(row)
 		if len(rows) > 0:
-			print rows
 			if isTrain:
 				customers.append(processCustomer(rows[:-1], variableNames))
-				purchasedLastViewed.append(processPurchasePoint(rows[-2], rows[-1]))
+				didPurchaseLastViewed, optionsPurchased = processPurchasePoint(rows[-2], rows[-1], variableNames)
+				purchasedLastViewed.append(didPurchaseLastViewed)
+				purchasedOptions.append(optionsPurchased)
 			else:
 				customers.append(processCustomer(rows, variableNames))			
 
 	customers = np.array(customers)
-	return (customers, variableNames, purchasedLastViewed)
+	purchasedLastViewed = np.array(purchasedLastViewed)
+	purchasedOptions = np.array(purchasedOptions)
+	return customers, variableNames, purchasedLastViewed, purchasedOptions
 
 def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
 	predictedTestOutputs = []
@@ -91,7 +100,7 @@ def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
 	resultString = ""
 	testIndicesToDelete = []
 	for i in range(len(predictedTestOutputs)):
-		if predictedTestOutputs[i] == 'True':
+		if predictedTestOutputs[i] == True:
 			resultString += str(testInput[i][0]) + ","
 			for coverageOption in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
 				resultString += str(testInput[i][variableNames.index(coverageOption)])
@@ -100,29 +109,24 @@ def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
 
 	trainIndicesToDelete = []
 	for i in range(len(predictedTrainOutputs)):
-		if predictedTrainOutputs[i] == 'True':
+		if predictedTrainOutputs[i] == True:
 			trainIndicesToDelete.append(i)
 
 	return resultString, trainIndicesToDelete, testIndicesToDelete
 
-def secondClassifier(trainData, testInput, variableNames):
+def secondClassifier(trainInput, purchasedOptions, testInput, variableNames):
 	'''this one is significantly shittier than the last. Probably because we don't really know yet???'''
 	outputs = []
-	for outputCol in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-		trainOutput = trainData[:,variableNames.index(outputCol)]
-		trainInput = np.delete(trainData, variableNames.index(outputCol), 1)
-
-		testOutput = testCustomers[:,variableNames.index(outputCol)]
-		testInput = np.delete(testCustomers, variableNames.index(outputCol), 1)
+	for i in range(len(['A', 'B', 'C', 'D', 'E', 'F', 'G'])):
+		trainOutput = purchasedOptions[:,i]
 
 		classifier = KNeighborsClassifier(n_neighbors = 30)
 		# classifier = SVC()
 		classifier.fit(trainInput[:,1:], trainOutput)
 		outputs.append(classifier.predict(testInput[:,1:]))
-		print 'output column: ', outputCol
 
 	resultStrings = []
-	customerIDs = testCustomers[:, variableNames.index('customer_ID')]
+	customerIDs = testInput[:, variableNames.index('customer_ID')]
 	for customerID, customerResult in zip(customerIDs, zip(*outputs)):
 		resultString = customerID + ',' + ''.join([x for x in customerResult])
 		resultStrings.append(resultString)
@@ -130,8 +134,8 @@ def secondClassifier(trainData, testInput, variableNames):
 	return '\n'.join(resultStrings)
 
 def main():
-	trainingCustomers, variableNames, purchasedLastViewed = preprocess('train.csv', True)
-	testCustomers, _, _ = preprocess('test_v2.csv', False)
+	trainingCustomers, variableNames, purchasedLastViewed, purchasedOptions = preprocess('train.csv', True)
+	testCustomers, _, _, _ = preprocess('test_v2.csv', False)
 
 	stateEncoder = preprocessing.LabelEncoder()
 	carValueEncoder = preprocessing.LabelEncoder()
@@ -162,10 +166,11 @@ def main():
 
 	resultString, trainIndicesToDelete, testIndicesToDelete = lastViewedClassifier(trainInput, trainOutput, testInput, variableNames)
 
-	trainData = numpy.delete(trainInput, trainIndicesToDelete)
-	testInput = numpy.delete(testInput, testIndicesToDelete)
+	trainInput = np.delete(trainInput, trainIndicesToDelete, axis=0)
+	purchasedOptions = np.delete(purchasedOptions, trainIndicesToDelete, axis=0)
+	testInput = np.delete(testInput, testIndicesToDelete, axis=0)
 
-	resultString += secondClassifier(trainData, testInput, variableNames)
+	resultString += secondClassifier(trainInput, purchasedOptions, testInput, variableNames)
 
 
 
