@@ -30,6 +30,23 @@ def processCustomer(rows, variableNames):
 		elif variableNames[i] in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
 			processedRow.append(rows[lastViewedIndex][i])
 
+			if len(rows) >= 2:
+				processedRow.append(rows[lastViewedIndex-1][i])
+			else:
+				processedRow.append(-1)
+
+			if len(rows) >= 3:
+				processedRow.append(rows[lastViewedIndex-2][i])
+			else:
+				processedRow.append(-1)
+
+			# options = []
+			# for row in rows:
+			# 	options.append(row[i])
+			# counter = Counter(options)
+			# mode, _ = counter.most_common(1)[0]
+			# processedRow.append(int(mode))
+
 
 		elif variableNames[i] in ['car_value', 'state']:
 			processedRow.append(rows[lastViewedIndex][i])
@@ -57,6 +74,7 @@ def preprocess(filename, isTrain):
 		reader = csv.reader(f, delimiter=',')
 		customerID = None
 		variableNames = reader.next()
+
 		rows = []
 		customers = []
 		purchasedLastViewed = []
@@ -82,6 +100,10 @@ def preprocess(filename, isTrain):
 				purchasedOptions.append(optionsPurchased)
 			else:
 				customers.append(processCustomer(rows, variableNames))			
+
+	for x in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
+		variableNames.insert(variableNames.index(x)+1, x+'_old2')
+		variableNames.insert(variableNames.index(x)+1, x+'_old1')
 
 	customers = np.array(customers)
 	purchasedLastViewed = np.array(purchasedLastViewed)
