@@ -11,6 +11,10 @@ import scipy
 from sklearn import preprocessing
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
+from sklearn import metrics
+from sklearn import cross_validation
+
+PRINT_METRICS = True
 
 def processCustomer(rows, variableNames):
 	processedRow = []
@@ -119,6 +123,22 @@ def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
 	predictedTrainOutputs.extend(classifier.predict(trainInput[:,1:]))
 	predictedTestOutputs.extend(classifier.predict(testInput[:,1:]))
 
+	if PRINT_METRICS:
+		# Randomly split the data into training and testing sets for validation.
+		train_in, test_in, train_out, test_out = cross_validation.train_test_split(
+			trainInput[:,1:], trainOutput, test_size=0.20)
+
+		# Train a classifier on the train data and validate the results with the
+		# testing set.
+		# NOTE: The stats printed here aren't going to be 100% accurate, as we're
+		# actually incorporating all of the data in our actual classification.
+		stat_classifier = KNeighborsClassifier(n_neighbors = 30)
+		stat_classifier.fit(train_in, train_out)
+		predictions = stat_classifier.predict(test_in)
+		print "\n\nPurchased Last Viewed Classifier"
+		print metrics.classification_report(test_out, predictions)
+		print "Accuracy", metrics.accuracy_score(test_out, predictions)		
+
 	resultString = ""
 	testIndicesToDelete = []
 	for i in range(len(predictedTestOutputs)):
@@ -137,7 +157,7 @@ def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
 	return resultString, trainIndicesToDelete, testIndicesToDelete
 
 def secondClassifier(trainInput, purchasedOptions, testInput, variableNames):
-	'''this one is significantly shittier than the last. Probably because we don't really know yet???'''
+	'''this classifier is significantly worse than the last. Probably because we don't really know yet???'''
 	outputs = []
 	for i in range(len(['A', 'B', 'C', 'D', 'E', 'F', 'G'])):
 		trainOutput = purchasedOptions[:,i]
@@ -146,6 +166,22 @@ def secondClassifier(trainInput, purchasedOptions, testInput, variableNames):
 		# classifier = SVC()
 		classifier.fit(trainInput[:,1:], trainOutput)
 		outputs.append(classifier.predict(testInput[:,1:]))
+
+		if PRINT_METRICS:
+			# Randomly split the data into training and testing sets for validation.
+			train_in, test_in, train_out, test_out = cross_validation.train_test_split(
+				trainInput[:,1:], trainOutput, test_size=0.20)
+
+			# Train a classifier on the train data and validate the results with the
+			# testing set.
+			# NOTE: The stats printed here aren't going to be 100% accurate, as we're
+			# actually incorporating all of the data in our actual classification.
+			stat_classifier = KNeighborsClassifier(n_neighbors = 30)
+			stat_classifier.fit(train_in, train_out)
+			predictions = stat_classifier.predict(test_in)
+			print "\n\nPlan", ['A', 'B', 'C', 'D', 'E', 'F', 'G'][i], "Classifier"
+			print metrics.classification_report(test_out, predictions)
+			print "Accuracy", metrics.accuracy_score(test_out, predictions)
 
 	resultStrings = []
 	customerIDs = testInput[:, variableNames.index('customer_ID')]
