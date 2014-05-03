@@ -13,7 +13,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn import metrics
 from sklearn import cross_validation
-
+from sklearn.naive_bayes import GaussianNB
 PRINT_METRICS = True
 
 def processCustomer(rows, variableNames):
@@ -37,12 +37,12 @@ def processCustomer(rows, variableNames):
 			if len(rows) >= 2:
 				processedRow.append(rows[lastViewedIndex-1][i])
 			else:
-				processedRow.append(-1)
+				processedRow.append(0)
 
 			if len(rows) >= 3:
 				processedRow.append(rows[lastViewedIndex-2][i])
 			else:
-				processedRow.append(-1)
+				processedRow.append(0)
 
 			# options = []
 			# for row in rows:
@@ -57,9 +57,9 @@ def processCustomer(rows, variableNames):
 
 		else:
 			if rows[lastViewedIndex][i] == 'NA':
-				processedRow.append(-1)
+				processedRow.append(0)
 			else: 
-				processedRow.append(int(rows[lastViewedIndex][i]))
+				processedRow.append(rows[lastViewedIndex][i])
 
 	return processedRow
 
@@ -118,7 +118,8 @@ def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
 	predictedTestOutputs = []
 	predictedTrainOutputs = []
 
-	classifier = KNeighborsClassifier(n_neighbors = 30)
+	#classifier = KNeighborsClassifier(n_neighbors = 30)
+	classifier = GaussianNB()
 	classifier.fit(trainInput[:,1:], trainOutput)
 	predictedTrainOutputs.extend(classifier.predict(trainInput[:,1:]))
 	predictedTestOutputs.extend(classifier.predict(testInput[:,1:]))
@@ -132,7 +133,8 @@ def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
 		# testing set.
 		# NOTE: The stats printed here aren't going to be 100% accurate, as we're
 		# actually incorporating all of the data in our actual classification.
-		stat_classifier = KNeighborsClassifier(n_neighbors = 30)
+		#stat_classifier = KNeighborsClassifier(n_neighbors = 30)
+		stat_classifier = GaussianNB()
 		stat_classifier.fit(train_in, train_out)
 		predictions = stat_classifier.predict(test_in)
 		print "\n\nPurchased Last Viewed Classifier"
@@ -143,9 +145,9 @@ def lastViewedClassifier(trainInput, trainOutput, testInput, variableNames):
 	testIndicesToDelete = []
 	for i in range(len(predictedTestOutputs)):
 		if predictedTestOutputs[i] == True:
-			resultString += str(testInput[i][0]) + ","
+			resultString += str(int(testInput[i][0])) + ","
 			for coverageOption in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-				resultString += str(testInput[i][variableNames.index(coverageOption)])
+				resultString += str(int(testInput[i][variableNames.index(coverageOption)]))
 			resultString += '\n'
 			testIndicesToDelete.append(i)
 
@@ -162,10 +164,19 @@ def secondClassifier(trainInput, purchasedOptions, testInput, variableNames):
 	for i in range(len(['A', 'B', 'C', 'D', 'E', 'F', 'G'])):
 		trainOutput = purchasedOptions[:,i]
 
-		classifier = KNeighborsClassifier(n_neighbors = 30)
+		# classifier = KNeighborsClassifier(n_neighbors = 30)
 		# classifier = SVC()
+		classifier = GaussianNB()
 		classifier.fit(trainInput[:,1:], trainOutput)
-		outputs.append(classifier.predict(testInput[:,1:]))
+		testPredictions = classifier.predict(testInput[:,1:])
+		outputs.append(testPredictions)
+
+		trainPredictions = classifier.predict(trainInput[:,1:])
+
+		testInput[:,variableNames.index(['A', 'B', 'C', 'D', 'E', 'F', 'G'][i])] = testPredictions
+		trainInput[:,variableNames.index(['A', 'B', 'C', 'D', 'E', 'F', 'G'][i])] = trainPredictions
+
+
 
 		if PRINT_METRICS:
 			# Randomly split the data into training and testing sets for validation.
@@ -176,7 +187,8 @@ def secondClassifier(trainInput, purchasedOptions, testInput, variableNames):
 			# testing set.
 			# NOTE: The stats printed here aren't going to be 100% accurate, as we're
 			# actually incorporating all of the data in our actual classification.
-			stat_classifier = KNeighborsClassifier(n_neighbors = 30)
+			#stat_classifier = KNeighborsClassifier(n_neighbors = 30)
+			stat_classifier = GaussianNB()
 			stat_classifier.fit(train_in, train_out)
 			predictions = stat_classifier.predict(test_in)
 			print "\n\nPlan", ['A', 'B', 'C', 'D', 'E', 'F', 'G'][i], "Classifier"
@@ -186,7 +198,7 @@ def secondClassifier(trainInput, purchasedOptions, testInput, variableNames):
 	resultStrings = []
 	customerIDs = testInput[:, variableNames.index('customer_ID')]
 	for customerID, customerResult in zip(customerIDs, zip(*outputs)):
-		resultString = customerID + ',' + ''.join([x for x in customerResult])
+		resultString = str(int(customerID)) + ',' + ''.join([str(int(x)) for x in customerResult])
 		resultStrings.append(resultString)
 
 	return '\n'.join(resultStrings)
@@ -212,7 +224,6 @@ def main():
 	encodedTestStates = stateEncoder.transform(testStates)
 	encodedTestCarValues = carValueEncoder.transform(testCarValues)
 
-
 	trainingCustomers[:,variableNames.index('state')] = encodedTrainStates
 	trainingCustomers[:,variableNames.index('car_value')] = encodedTrainCarValues
 	testCustomers[:,variableNames.index('state')] = encodedTestStates
@@ -222,12 +233,16 @@ def main():
 	trainInput = trainingCustomers
 	testInput = testCustomers
 
-	resultString, trainIndicesToDelete, testIndicesToDelete = lastViewedClassifier(trainInput, trainOutput, testInput, variableNames)
+	trainInput = trainInput.astype(float)
+	testInput = testInput.astype(float)
 
-	trainInput = np.delete(trainInput, trainIndicesToDelete, axis=0)
-	purchasedOptions = np.delete(purchasedOptions, trainIndicesToDelete, axis=0)
-	testInput = np.delete(testInput, testIndicesToDelete, axis=0)
+	# resultString, trainIndicesToDelete, testIndicesToDelete = lastViewedClassifier(trainInput, trainOutput, testInput, variableNames)
 
+	# trainInput = np.delete(trainInput, trainIndicesToDelete, axis=0)
+	# purchasedOptions = np.delete(purchasedOptions, trainIndicesToDelete, axis=0)
+	# testInput = np.delete(testInput, testIndicesToDelete, axis=0)
+
+	resultString = ""
 	resultString += secondClassifier(trainInput, purchasedOptions, testInput, variableNames)
 
 
